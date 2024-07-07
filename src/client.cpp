@@ -1,10 +1,11 @@
 #include "client.hpp"
 
+#include <nlohmann/detail/conversions/to_json.hpp>
+
 using namespace localSocket;
 using namespace nlohmann;
 
-Client::Client(const std::string& address) : semaphore(0) {
-    sockpp::initialize();
+Client::Client(const std::string& address) : semaphore(0) { sockpp::initialize();
     conn.connect(sockpp::unix_address(address));
     conn.set_non_blocking();
     reactor.setReadCallback([this](int) { recieveResponse(); });
@@ -17,19 +18,38 @@ Client::Client(const std::string& address) : semaphore(0) {
 
 Client::~Client() { reactor.endWaiting(); }
 
-void Client::getResource(const std::vector<std::string>& path) {
-    json request;
-    request["method"] = "get";
-    request["path"] = path;
-    conn.write(request.dump());
+namespace localSocket {
+void to_json(json& target, const MessageGet& source) {
+    target = json{
+        {"group", source.group},
+        {"path", source.path},
+        {"name", source.name},
+    };
 }
 
-void Client::postResource(const std::vector<std::string>& path, const json& resource) {
-    json request;
-    request["method"] = "post";
-    request["path"] = path;
-    request["resource"] = resource;
-    conn.write(request.dump());
+void to_json(json& target, const MessagePost& source) {
+    target = json{
+        {"group", source.group},
+        {"path", source.path},
+        {"name", source.name},
+        {"resource", source.resource},
+    };
+}
+
+}  // namespace localSocket
+
+void Client::requestGet(const std::vector<MessageGet>& aims) {
+    json message;
+    message["method"] = "get";
+    message["aims"] = aims;
+    conn.write(message.dump());
+}
+
+void Client::requestPost(const std::vector<MessagePost>& aims) {
+    json message;
+    message["method"] = "post";
+    message["aims"] = aims;
+    conn.write(message.dump());
 }
 
 json Client::getResponse() {
@@ -43,9 +63,9 @@ void Client::recieveResponse() {
     info->resize(additionalSize);
     do {
         size = conn.recv(info->data() + start, additionalSize).value();
-        start += size;
         if (size >= additionalSize)
             info->resize(info->size() + additionalSize);
+        start += size;
     } while (size > 0);
     response = json::parse(*info);
     semaphore.release();

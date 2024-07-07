@@ -43,14 +43,12 @@ void Service::addClient() {
     channel.setWrite();
     channel.setET();
     subReactor.enroll(channel);
-    writingRight.add(fd, std::make_unique<std::mutex>());
-    writeBuffer.add(fd, std::deque<std::unique_ptr<std::string>>());
+    writtenMembers.add(fd, std::make_unique<Member>());
     clients.add(fd, std::move(client));
 }
 
 void Service::removeClient(int fd) {
-    writingRight.remove(fd);
-    writeBuffer.remove(fd);
+    writtenMembers.remove(fd);
     clients.remove(fd);
 }
 
@@ -63,63 +61,55 @@ void Service::readClient(int fd) {
     info->resize(additionalSize);
     do {
         size = client->recv(info->data() + start, additionalSize).value();
-        start += size;
         if (size >= additionalSize)
             info->resize(info->size() + additionalSize);
+        start += size;
     } while (size > 0);
     parse(fd, *info);
 }
 
 void Service::writeClient(int fd) {
     auto client = clients.lend(fd);
-    auto buffer = writeBuffer.lend(fd);
-    auto mutex = writingRight.lend(fd);
-    if (!client.isExist() || !buffer.isExist() || !mutex.isExist())
+    auto member = writtenMembers.lend(fd);
+    if (!client.isExist() || !member.isExist())
         return;
-    std::unique_lock<std::mutex> lock(**mutex);
-    if (buffer->empty())
+    auto&& [buffer, mutex] = **member;
+    std::unique_lock<std::mutex> lock(mutex);
+    if (buffer.empty())
         return;
     size_t maxSize = client->send_buffer_size().value();
-    do {
-        auto&& info = buffer->front();
-        size_t writtenSize, infoSize = info->size();
-        if (infoSize > maxSize) {
-            writtenSize = client->send(info->data(), maxSize).value();
-        }
-        else {
-            writtenSize = client->send(info->data(), infoSize).value();
-        }
+    while (!buffer.empty()) {
+        auto&& info = buffer.front();
+        size_t infoSize = info.size(), writtenSize;
+        if (infoSize <= 0)
+            continue;
+        size_t size = infoSize > maxSize ? maxSize : infoSize;
+        writtenSize = client->send(info.data(), size).value();
         if (writtenSize < 0)
             break;
-        if (writtenSize < infoSize) {
-            info->erase(info->begin(), info->begin() + writtenSize);
-        }
-        else {
-            buffer->pop_front();
-        }
-    } while (!buffer->empty());
+        if (writtenSize < infoSize)
+            info.erase(writtenSize);
+        else
+            buffer.pop();
+    }
 }
 
 void Service::inform(int fd, const std::string& info) {
     auto client = clients.lend(fd);
-    auto buffer = writeBuffer.lend(fd);
-    auto mutex = writingRight.lend(fd);
-    if (!client.isExist() || !buffer.isExist() || !mutex.isExist())
+    auto member = writtenMembers.lend(fd);
+    if (!client.isExist() || !member.isExist())
         return;
-    std::unique_lock<std::mutex> lock(**mutex);
-    size_t maxSize = client->send_buffer_size().value(), infoSize = info.size(),
-           writtenSize;
-    if (infoSize > maxSize) {
-        writtenSize = client->send(info.data(), maxSize).value();
-    }
-    else {
-        writtenSize = client->send(info.data(), infoSize).value();
-    }
+    auto&& [buffer, mutex] = **member;
+    std::unique_lock<std::mutex> lock(mutex);
+    size_t maxSize = client->send_buffer_size().value();
+    size_t infoSize = info.size(), writtenSize;
+    size_t size = infoSize > maxSize ? maxSize : infoSize;
+    writtenSize = client->send(info.data(), size).value();
     if (writtenSize < 0 || writtenSize >= infoSize)
         return;
-    buffer->emplace_back(new std::string(info.begin() + writtenSize, info.end())); //
+    buffer.push(info.substr(writtenSize));
 }
 
 void Service::parse(int fd, const std::string& info) {
-    inform(fd, info);  // echo
+    // inform(fd, info);  // echo
 }

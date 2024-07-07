@@ -15,7 +15,8 @@ int main(int argc, char *argv[]) {
         {"list", {1, 0, 2}},
         {"object", {{"currency", "USD"}, {"value", 42.99}}}
     };
-    localSocket::Server server("\0server.sock", std::move(resource));
+    localSocket::Server server("\0server.sock");
+    server.addResource("test", resource);
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }

@@ -8,14 +8,29 @@
 #include "sockpp/unix_connector.h"
 
 namespace localSocket {
+struct MessageGet
+{
+    std::string group;
+    std::vector<std::string> path;
+    std::string name;
+};
+
+struct MessagePost
+{
+    std::string group;
+    std::vector<std::string> path;
+    std::string name;
+    nlohmann::json resource;
+};
+
 class Client
 {
 public:
     Client(const std::string& address);
     ~Client();
 
-    void getResource(const std::vector<std::string>& path);
-    void postResource(const std::vector<std::string>& path, const nlohmann::json& resource);
+    void requestGet(const std::vector<MessageGet>& aims);
+    void requestPost(const std::vector<MessagePost>& aims);
     nlohmann::json getResponse();
 
 private:

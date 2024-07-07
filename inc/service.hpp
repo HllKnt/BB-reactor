@@ -4,8 +4,6 @@
 #include <sockpp/unix_acceptor.h>
 #include <sockpp/unix_stream_socket.h>
 
-#include <deque>
-
 #include "manager.hpp"
 #include "reactor.hpp"
 #include "threadPool.hpp"
@@ -22,8 +20,9 @@ private:
     ThreadPool threadPool;
     sockpp::unix_acceptor acceptor;
     Manager<int, sockpp::unix_socket> clients;
-    Manager<int, std::unique_ptr<std::mutex>> writingRight;
-    Manager<int, std::deque<std::unique_ptr<std::string>>> writeBuffer;
+    using Buffer = std::queue<std::string>; 
+    using Member = std::tuple<Buffer, std::mutex>;
+    Manager<int, std::unique_ptr<Member>> writtenMembers;
 
     void addClient();
     void removeClient(int fd);
