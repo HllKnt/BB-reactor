@@ -4,25 +4,28 @@
 #include <functional>
 #include <thread>
 
-#include "poller.hpp"
+#include "epoll.hpp"
 
 namespace localSocket {
 
-class Reactor : public Poller
+class Reactor : public Epoll
 {
 public:
     Reactor();
     ~Reactor();
 
-    void setDisconnectCallback(std::function<void(int)>&& callback);
     void setReadCallback(std::function<void(int)>&& callback);
     void setWriteCallback(std::function<void(int)>&& callback);
+    void setDisconnectCallback(std::function<void(int)>&& callback);
+    void setCloseCallback(std::function<void(int)>&& callback);
 
 private:
-    std::function<void(int)> disconnectCallback;
+    int stopEvent;
+    std::thread react;
     std::function<void(int)> readCallback;
     std::function<void(int)> writeCallback;
-    std::thread react;
+    std::function<void(int)> disconnectCallback;
+    std::function<void(int)> closeCallback;
 
     void work();
 };

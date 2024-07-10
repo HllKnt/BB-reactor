@@ -17,13 +17,13 @@ public:
     }
 
     ~ThreadPool() {
-        drain();
-        for (auto& i : threads) i.join();
-    }
-
-    void drain() {
         state = destruction;
         for (auto& i : threads) semaphore.release();
+        for (auto& i : threads) {
+            if (i.joinable()) {
+                i.join();
+            }
+        }
     }
 
     template <typename F, typename... Args>
@@ -49,7 +49,8 @@ private:
         while (state != destruction) {
             semaphore.acquire();
             std::unique_lock<std::mutex> lock{head};
-            if (tasks.empty()) continue;
+            if (tasks.empty())
+                continue;
             auto task = tasks.front();
             tasks.pop();
             lock.unlock();
@@ -58,6 +59,6 @@ private:
     }
 };
 
-}  // namespace threadPool
+}  // namespace localSocket
 
 #endif  // !THREADPOOL_H

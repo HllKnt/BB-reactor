@@ -1,36 +1,28 @@
 #ifndef SERVER_H
 #define SERVER_H
 
-#include <memory>
-#include <shared_mutex>
 #include <string>
-#include <tuple>
-#include <unordered_map>
 
+#include "baseServer.hpp"
+#include "message.hpp"
 #include "nlohmann/json.hpp"
-#include "service.hpp"
+#include "resource.hpp"
 
 namespace localSocket {
-class Server : protected Service
+class Server : protected BaseServer
 {
 public:
-    Server(const std::string& address);
-    void addResource(const std::string name, const nlohmann::json& resource);
+    using Type = std::tuple<std::string, nlohmann::json>;
+    Server(const std::string& address, const std::vector<Type>& resources);
 
 private:
-    using Member = std::tuple<nlohmann::json, std::shared_mutex>;
-    std::unordered_map<std::string, std::unique_ptr<Member>> groups;
+    protocol::Resource resource;
 
-    using ReturnType = std::tuple<nlohmann::json*, std::shared_mutex*>;
-    ReturnType locate(
-        const nlohmann::json& groupName, const nlohmann::json& path,
-        const nlohmann::json& name
-    );
-    std::string responseGet(const nlohmann::json& aims);
-    std::string responsePost(const nlohmann::json& aims);
+    protocol::ResponseGet response(const protocol::RequestGet& request);
+    protocol::ResponsePost response(const protocol::RequestPost& request);
 
 protected:
-    void parse(int fd, const std::string& info) override;
+    void handle(int fd, const std::string& info) override;
 };
 
 }  // namespace localSocket

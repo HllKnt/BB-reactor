@@ -4,72 +4,53 @@
 #include <shared_mutex>
 #include <string>
 
+#include "baseServer.hpp"
+#include "message.hpp"
 #include "nlohmann/json.hpp"
-#include "service.hpp"
 
 using namespace localSocket;
 using namespace nlohmann;
+using namespace protocol;
 
-Server::Server(const std::string& address) : Service(address) {}
+Server::Server(const std::string& address, const std::vector<Type>& resources)
+    : BaseServer(address), resource(resources) {}
 
-void Server::addResource(const std::string name, const nlohmann::json& resource) {
-    groups.emplace(name, std::make_unique<Member>());
-    auto&& [target, mutex] = *groups.at(name);
-    target = resource;
-}
-
-using ReturnType = std::tuple<nlohmann::json*, std::shared_mutex*>;
-ReturnType Server::locate(const json& groupName, const json& path, const json& name) {
-    if (groups.find(groupName) == groups.end())
-        return {nullptr, nullptr};
-    auto&& [group, mutex] = *groups.at(groupName);
-    json* object = &group;
-    for (auto& i : path) {
-        if (object->find(i) == object->end())
-            return {nullptr, nullptr};
-        object = &object->at(i);
-    }
-    if (object->find(name) == object->end())
-        return {nullptr, nullptr};
-    return {&object->at(name), &mutex};
-}
-
-std::string Server::responseGet(const nlohmann::json& aims) {
-    json message;
-    message["method"] = "get";
-    message["passed"] = false;
-    for (auto& i : aims) {
-        auto [object, mutex] = locate(i["group"], i["path"], i["name"]);
-        if (object == nullptr)
+ResponseGet Server::response(const RequestGet& request) {
+    ResponseGet response;
+    for (auto&& i : request.addresses) {
+        auto&& [object, mutex] = resource.locate(i);
+        if (object == nullptr) {
+            response.results.push_back(json());
             continue;
-        message["passed"] = true;
+        }
         std::shared_lock<std::shared_mutex> lock(*mutex);
-        message["resource"][i["name"]] = *object;
+        response.results.push_back(*object);
     }
-    return message.dump();
+    return response;
 }
 
-std::string Server::responsePost(const nlohmann::json& aims) {
-    json message;
-    message["method"] = "post";
-    message["passed"] = false;
-    for (auto& i : aims) {
-        auto [object, mutex] = locate(i["group"], i["path"], i["name"]);
-        if (object == nullptr)
-            continue;
-        message["passed"] = true;
+ResponsePost Server::response(const RequestPost& request) {
+    ResponsePost response;
+    for (int i = 0; i < request.addresses.size() && i < request.content.size(); i++) {
+        auto&& [object, mutex] = resource.locate(request.addresses[i]);
+        if (object == nullptr) {
+            response.results.push_back(false);
+        }
         std::unique_lock<std::shared_mutex> lock(*mutex);
-        *object = i["resource"];
+        *object = request.content[i];
+        response.results.push_back(true);
     }
-    return message.dump();
+    return response;
 }
 
-void Server::parse(int fd, const std::string& info) {
+void Server::handle(int fd, const std::string& info) {
     json message = json::parse(info);
-    if (message["method"] == "get") {
-        inform(fd, responseGet(message["aims"]));
+    if (message["method"].template get<Method>() == get) {
+        RequestGet request = message;
+        inform(fd, json(response(request)).dump());
     }
-    else if (message["method"] == "post") {
-        inform(fd, responsePost(message["aims"]));
+    else if (message["method"].template get<Method>() == post) {
+        RequestPost request = message;
+        inform(fd, json(response(request)).dump());
     }
 }

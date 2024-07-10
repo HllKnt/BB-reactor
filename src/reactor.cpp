@@ -1,15 +1,25 @@
 #include "reactor.hpp"
 
+#include <sys/eventfd.h>
+
+#include "channel.hpp"
+
 using namespace localSocket;
 
 Reactor::Reactor()
     : disconnectCallback([](int) {}), readCallback([](int) {}), writeCallback([](int) {}) {
+    stopEvent = eventfd(0, 0);
     react = std::thread(&Reactor::work, this);
+    enroll({stopEvent, Channel::readFeasible});
 }
 
 Reactor::~Reactor() {
-    this->endWaiting();
+    eventfd_write(stopEvent, 1);
     react.join();
+}
+
+void Reactor::setCloseCallback(std::function<void(int)>&& callback) {
+    this->closeCallback = callback;
 }
 
 void Reactor::setDisconnectCallback(std::function<void(int)>&& callback) {
@@ -25,23 +35,25 @@ void Reactor::setWriteCallback(std::function<void(int)>&& callback) {
 }
 
 void Reactor::work() {
-    auto tackle = [this](Channel& channel) {
-        int fd = channel.getFD();
-        if (channel.getEvent() == Channel::disconnect) {
-            Channel channel;
-            channel.setFD(fd);
-            remove(channel);
-            disconnectCallback(fd);
+    bool stop = false;
+    auto handle = [&](const Channel& channel) {
+        if (channel.fd == stopEvent) {
+            stop = true;
+            return;
         }
-        else if (channel.getEvent() == Channel::input) {
-            readCallback(fd);
-        }
-        else {
-            writeCallback(fd);
-        }
+        if (channel.event == Channel::closed)
+            closeCallback(channel.fd);
+        if (channel.event == Channel::disconnected)
+            disconnectCallback(channel.fd);
+        if (channel.event == Channel::readFeasible)
+            readCallback(channel.fd);
+        if (channel.event == Channel::writeFeasible)
+            writeCallback(channel.fd);
     };
-    while (!isWaitOver()) {
-        auto&& res = wait();
-        for (auto i : res) tackle(i);
+    while (!stop) {
+        auto&& channels = wait();
+        for (int i = 0; i < channels.size() && !stop; i++) {
+            handle(channels[i]);
+        }
     }
 }

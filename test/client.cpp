@@ -6,19 +6,20 @@
 #include <iostream>
 
 using namespace nlohmann;
+using namespace localSocket;
+using namespace protocol;
 
 int main(int argc, char *argv[]) {
     localSocket::Client client("\0server.sock");
     using namespace std::chrono;
+    client.request(RequestGet{.addresses = {{"test", {}}}});
     auto start = system_clock::now();
-    client.requestGet({{"test", {{"answer"}}, "everything"}, {"test", {}, "pi"}});
-    client.getResponse();
-    client.requestPost({{"test", {{"answer"}}, "everything", 6}, {"test", {}, "pi", 6.28}});
-    client.getResponse();
-    client.requestGet({{"test", {{"answer"}}, "everything"}, {"test", {}, "pi"}});
-    client.getResponse();
+    auto res = client.getResponse();
     auto end = system_clock::now();
     auto duration = duration_cast<microseconds>(end - start);
-    std::cout <<  "Spent" << double(duration.count()) * microseconds::period::num / microseconds::period::den << " seconds." << std::endl;
+    std::cout << "Spent"
+              << 1000 * double(duration.count()) * microseconds::period::num /
+                     microseconds::period::den
+              << " microseconds." << std::endl;
     return 0;
 }

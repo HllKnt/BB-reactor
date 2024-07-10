@@ -3,34 +3,20 @@
 
 #include <semaphore>
 
+#include "message.hpp"
 #include "nlohmann/json.hpp"
 #include "reactor.hpp"
 #include "sockpp/unix_connector.h"
 
 namespace localSocket {
-struct MessageGet
-{
-    std::string group;
-    std::vector<std::string> path;
-    std::string name;
-};
-
-struct MessagePost
-{
-    std::string group;
-    std::vector<std::string> path;
-    std::string name;
-    nlohmann::json resource;
-};
-
 class Client
 {
 public:
     Client(const std::string& address);
     ~Client();
 
-    void requestGet(const std::vector<MessageGet>& aims);
-    void requestPost(const std::vector<MessagePost>& aims);
+    void request(const protocol::RequestGet& request);
+    void request(const protocol::RequestPost& request);
     nlohmann::json getResponse();
 
 private:

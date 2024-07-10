@@ -1,55 +1,33 @@
 #include "client.hpp"
 
+#include <sys/ioctl.h>
+
 #include <nlohmann/detail/conversions/to_json.hpp>
+
+#include "message.hpp"
 
 using namespace localSocket;
 using namespace nlohmann;
+using namespace protocol;
 
-Client::Client(const std::string& address) : semaphore(0) { sockpp::initialize();
+Client::Client(const std::string& address) : semaphore(0) {
+    sockpp::initialize();
     conn.connect(sockpp::unix_address(address));
     conn.set_non_blocking();
     reactor.setReadCallback([this](int) { recieveResponse(); });
-    Channel channel;
-    channel.setFD(conn.handle());
-    channel.setRead();
-    channel.setET();
-    reactor.enroll(channel);
+    reactor.enroll({conn.handle(), Channel::readFeasible}, Epoll::TriggerMode::edge);
 }
 
-Client::~Client() { reactor.endWaiting(); }
+Client::~Client() {}
 
-namespace localSocket {
-void to_json(json& target, const MessageGet& source) {
-    target = json{
-        {"group", source.group},
-        {"path", source.path},
-        {"name", source.name},
-    };
+void Client::request(const RequestGet& request) {
+    semaphore.try_acquire();
+    conn.write(json(request).dump());
 }
 
-void to_json(json& target, const MessagePost& source) {
-    target = json{
-        {"group", source.group},
-        {"path", source.path},
-        {"name", source.name},
-        {"resource", source.resource},
-    };
-}
-
-}  // namespace localSocket
-
-void Client::requestGet(const std::vector<MessageGet>& aims) {
-    json message;
-    message["method"] = "get";
-    message["aims"] = aims;
-    conn.write(message.dump());
-}
-
-void Client::requestPost(const std::vector<MessagePost>& aims) {
-    json message;
-    message["method"] = "post";
-    message["aims"] = aims;
-    conn.write(message.dump());
+void Client::request(const RequestPost& request) {
+    semaphore.try_acquire();
+    conn.write(json(request).dump());
 }
 
 json Client::getResponse() {
@@ -58,15 +36,11 @@ json Client::getResponse() {
 }
 
 void Client::recieveResponse() {
+    size_t size = 0;
+    ioctl(conn.handle(), FIONREAD, &size);
     std::unique_ptr<std::string> info(new std::string);
-    size_t additionalSize = 256, start = 0, size;
-    info->resize(additionalSize);
-    do {
-        size = conn.recv(info->data() + start, additionalSize).value();
-        if (size >= additionalSize)
-            info->resize(info->size() + additionalSize);
-        start += size;
-    } while (size > 0);
+    info->resize(size);
+    conn.recv(info->data(), info->size()).value();
     response = json::parse(*info);
     semaphore.release();
 }

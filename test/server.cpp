@@ -1,9 +1,12 @@
 #include "server.hpp"
+#include "resource.hpp"
 
 #include <chrono>
 #include <thread>
 
 using namespace nlohmann;
+using namespace localSocket;
+using namespace protocol;
 
 int main(int argc, char *argv[]) {
     json resource = {
@@ -15,8 +18,7 @@ int main(int argc, char *argv[]) {
         {"list", {1, 0, 2}},
         {"object", {{"currency", "USD"}, {"value", 42.99}}}
     };
-    localSocket::Server server("\0server.sock");
-    server.addResource("test", resource);
+    Server server("\0server.sock", {{"test", resource}});
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
