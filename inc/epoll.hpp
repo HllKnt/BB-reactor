@@ -1,39 +1,32 @@
-#ifndef EPOLL_H
-#define EPOLL_H
-
 #include <sys/epoll.h>
 
 #include <memory>
-#include <set>
-#include <shared_mutex>
+#include <tuple>
+#include <unordered_map>
 #include <vector>
 
-#include "channel.hpp"
-
-namespace localSocket {
+namespace frame {
 class Epoll
 {
 public:
+    using EpollEevents = std::vector<std::tuple<int, uint32_t>>;
+
     Epoll();
     ~Epoll();
 
-    enum TriggerMode { level, edge };
-    void enroll(const Channel& channel, TriggerMode mode = level);
-    void remove(const Channel& channel);
-
-protected:
-    std::vector<Channel> wait();
+    bool exist(int fd);
+    uint32_t peerEvent(int fd);
+    void add(int fd, uint32_t event);
+    void mod(int fd, uint32_t event);
+    void del(int fd);
+    void setEdgeTrigger(int fd);
+    void setLevelTrigger(int fd);
+    EpollEevents wait();
 
 private:
     int self;
-    std::shared_mutex mutex;
-    std::set<Channel, std::less<>> roster;
-    std::unique_ptr<std::vector<epoll_event>> events;
-
-    uint32_t enrolledEvents(int fd);
-    void remove(int fd);
+    std::unordered_map<int, uint32_t> roster;
+    std::unique_ptr<std::vector<epoll_event>> epollEvents;
 };
 
-}  // namespace localSocket
-
-#endif  // !EPOLL_H
+}  // namespace frame

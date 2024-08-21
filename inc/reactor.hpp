@@ -1,35 +1,46 @@
-#ifndef REACTOR_H
-#define REACTOR_H
+#pragma once
+
+#include <sys/epoll.h>
 
 #include <functional>
+#include <semaphore>
 #include <thread>
 
 #include "epoll.hpp"
+#include "valve.hpp"
 
-namespace localSocket {
-
-class Reactor : public Epoll
+namespace frame {
+class Reactor
 {
 public:
+    using ValveHandles = std::vector<ValveHandle>;
+    using CleanCallback = std::function<void(int)>;
+    using NormalIOCallback = std::function<void(const ValveHandles&)>;
+
     Reactor();
     ~Reactor();
 
-    void setReadCallback(std::function<void(int)>&& callback);
-    void setWriteCallback(std::function<void(int)>&& callback);
-    void setDisconnectCallback(std::function<void(int)>&& callback);
-    void setCloseCallback(std::function<void(int)>&& callback);
+    void enroll(int fd);
+    void logout(int fd);
+    void reflash(int fd);
+    void setEdgeTrigger(int fd);
+    void setLevelTrigger(int fd);
+    void enroll(const ValveHandle&);
+    void logout(const ValveHandle&);
+    void setClean(const CleanCallback&);
+    void setNormalIO(const NormalIOCallback&);
 
 private:
-    int stopEvent;
+    int stop;
+    bool over;
+    Epoll epoll;
     std::thread react;
-    std::function<void(int)> readCallback;
-    std::function<void(int)> writeCallback;
-    std::function<void(int)> disconnectCallback;
-    std::function<void(int)> closeCallback;
+    CleanCallback clean;
+    NormalIOCallback normalIO;
+    std::binary_semaphore lock;
 
-    void work();
+    void wait();
+    ValveHandles filter(const Epoll::EpollEevents& epollEvents);
 };
 
-}  // namespace server
-
-#endif  // !REACTOR_H
+}  // namespace frame
