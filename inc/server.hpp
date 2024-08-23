@@ -24,11 +24,12 @@ public:
 private:
     ThreadPool threadPool;
     Reactor mainReactor, subReactor;
-    AcceptorAbstract<Socket> acceptor;
-    Keeper<int, SocketAbstract<Socket>> connections;
+    Acceptor<Socket> acceptor;
+    Keeper<int, Connection<Socket>> connections;
     Keeper<ValveHandle, Valve> valves;
     using Buffer = std::vector<uint8_t>;
-    Keeper<int, std::unique_ptr<Buffer>> recvBuffers, sendBuffers;
+    Keeper<int, std::unique_ptr<Buffer>> recvBuffers;
+    Keeper<int, std::unique_ptr<std::queue<Buffer>>> sendBuffers;
 
     void tackleConnect();
     void tackleDisconnect(int fd);
@@ -44,7 +45,7 @@ template <typename Socket>
 Server<Socket>::Server(const std::string& address)
     : threadPool{std::thread::hardware_concurrency()} {
     mainReactor.setNormalIO([this](const Reactor::ValveHandles&) { tackleConnect(); });
-    subReactor.setClean([this](int fd) { tackleDisconnect(fd); });
+    mainReactor.setClean([this](int fd) { tackleDisconnect(fd); });
     subReactor.setNormalIO([this](const Reactor::ValveHandles& handles) {
         tackleNormalIO(handles);
     });
@@ -60,13 +61,14 @@ Server<Socket>::~Server() {
 template <typename Socket>
 void Server<Socket>::tackleConnect() {
     auto&& connection = acceptor.accept();
-    connection.setNonBlocking();
     int fd = connection.fileDiscription();
-    connections.obtain(fd, std::move(connection));
-    sendBuffers.obtain(fd, std::make_unique<Buffer>());
-    recvBuffers.obtain(fd, std::make_unique<Buffer>());
-    valves.obtain({fd, ValveHandle::Event::writeFeasible}, {Valve::State::shut});
+    connection.setNonBlocking();
     valves.obtain({fd, ValveHandle::Event::readFeasible}, {Valve::State::open});
+    valves.obtain({fd, ValveHandle::Event::writeFeasible}, {Valve::State::shut});
+    recvBuffers.obtain(fd, std::unique_ptr<Buffer>{new Buffer});
+    sendBuffers.obtain(fd, std::unique_ptr<std::queue<Buffer>>{new std::queue<Buffer>});
+    connections.obtain(fd, std::move(connection));
+    mainReactor.enroll(fd);
     subReactor.enroll(fd);
     subReactor.setEdgeTrigger(fd);
     subReactor.enroll({fd, ValveHandle::Event::writeFeasible});
@@ -75,11 +77,12 @@ void Server<Socket>::tackleConnect() {
 
 template <typename Socket>
 void Server<Socket>::tackleDisconnect(int fd) {
+    mainReactor.logout(fd);
     subReactor.logout(fd);
-    valves.discard({fd, ValveHandle::Event::writeFeasible});
     valves.discard({fd, ValveHandle::Event::readFeasible});
-    sendBuffers.discard(fd);
+    valves.discard({fd, ValveHandle::Event::writeFeasible});
     recvBuffers.discard(fd);
+    sendBuffers.discard(fd);
     connections.discard(fd);
 }
 
@@ -88,7 +91,7 @@ void Server<Socket>::tackleNormalIO(const Reactor::ValveHandles& handles) {
     threadPool.lock();
     for (auto& handle : handles) {
         auto&& valve = valves.lend(handle);
-        if (not valve->tryTurnOn()) {
+        if (not valve.exist() || not valve->tryTurnOn()) {
             continue;
         }
         if (handle.event == ValveHandle::Event::readFeasible) {
@@ -111,13 +114,13 @@ void Server<Socket>::tackleReadFeasible(const ValveHandle& handle) {
     if (not connection.exist() || not recvBuffer.exist() || not valve.exist()) {
         return;
     }
-    SocketAbstract<Socket>& socket = connection.peerValue();
-    std::vector<uint8_t>& buffer = *recvBuffer.peerValue();
+    Connection<Socket>& socket = connection.peerValue();
+    Buffer& buffer = *recvBuffer.peerValue();
     while (valve->tryStartUp()) {
         size_t infoSize = 0;
         ioctl(fd, FIONREAD, &infoSize);
         if (infoSize <= 0) {
-            return;
+            continue;
         }
         size_t start = buffer.size();
         buffer.resize(start + infoSize);
@@ -135,13 +138,20 @@ void Server<Socket>::tackleWriteFeasible(const ValveHandle& handle) {
     if (not connection.exist() || not sendBuffer.exist() || not valve.exist()) {
         return;
     }
-    SocketAbstract<Socket>& socket = connection.peerValue();
-    std::vector<uint8_t>& buffer = *sendBuffer.peerValue();
+    Connection<Socket>& socket = connection.peerValue();
+    std::queue<Buffer>& buffers = *sendBuffer.peerValue();
+    size_t maxSize = socket.peerSendBufferSize();
     while (valve->tryStartUp()) {
-        size_t maxSize = socket.peerSendBufferSize();
+        Buffer& buffer = buffers.front();
         int writtenSize = socket.send(buffer.data(), std::min(maxSize, buffer.size()));
-        buffer.erase(buffer.begin(), buffer.begin() + std::max(0, writtenSize));
-        valve->tryDisable([&]() -> bool { return buffer.empty(); });
+        writtenSize = std::max(0, writtenSize);
+        if (writtenSize < buffer.size()) {
+            buffer.erase(buffer.begin(), buffer.begin() + writtenSize);
+        }
+        else {
+            buffers.pop();
+        }
+        valve->tryDisable([&]() -> bool { return buffers.empty(); });
     }
 }
 
@@ -153,23 +163,25 @@ void Server<Socket>::writeInfo(int fd, std::string_view reply) {
     if (not connection.exist() || not sendBuffer.exist() || not valve.exist()) {
         return;
     }
-    SocketAbstract<Socket>& socket = connection.peerValue();
-    std::vector<uint8_t>& buffer = *sendBuffer.peerValue();
+    Connection<Socket>& socket = connection.peerValue();
+    std::queue<Buffer>& buffers = *sendBuffer.peerValue();
     uint8_t* info = (uint8_t*)reply.data();
     size_t infoSize = reply.size();
     if (valve->peerState() == Valve::State::shut) {
         size_t maxSize = socket.peerSendBufferSize();
         int writtenSize = socket.send(info, std::min(maxSize, infoSize));
-        if (writtenSize == infoSize) {
+        writtenSize = std::max(0, writtenSize);
+        if (writtenSize >= infoSize) {
             return;
         }
-        buffer.insert(buffer.begin(), info + std::max(0, writtenSize), info + infoSize);
+        info = info + writtenSize;
+        infoSize -= writtenSize;
+        buffers.emplace(info, info + infoSize);
     }
     else {
-        buffer.reserve(buffer.size() + infoSize);
-        buffer.insert(buffer.begin() + buffer.size(), info, info + infoSize);
+        buffers.emplace(info, info + infoSize);
     }
-    if (valve->tryEnable([&]() { return buffer.empty(); })) {
+    if (valve->tryEnable([&]() { return buffers.empty(); })) {
         subReactor.reflash(fd);
     }
 }

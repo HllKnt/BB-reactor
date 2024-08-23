@@ -1,10 +1,11 @@
-#include "threadPool.hpp"
+#include "../inc/threadPool.hpp"
 
 using namespace frame;
 
 ThreadPool::ThreadPool(size_t size) : over{false}, cnt{0}, semaphore{0}, head{1}, tail{1} {
-    threads.resize(size);
-    for (int i = 0; i < size; i++) threads.emplace_back(&ThreadPool::work, this);
+    for (int i = 0; i < size; i++) {
+        threads.emplace_back(&ThreadPool::work, this);
+    } 
 }
 
 ThreadPool::~ThreadPool() { drain(); }

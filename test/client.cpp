@@ -1,5 +1,5 @@
+#include <chrono>
 #include <iostream>
-#include <string>
 
 #include "sockpp/unix_connector.h"
 
@@ -9,17 +9,18 @@ int main(int argc, char* argv[]) {
     sockpp::initialize();
     unix_connector conn;
     conn.connect(unix_address("\0sock"));
-    string s, sret;
-    while (getline(std::cin, s) && !s.empty()) {
-        const size_t N = s.length();
-        if (auto res = conn.write(s); !res || res != N) {
-            break;
-        }
-        sret.resize(N);
-        if (auto res = conn.read_n(&sret[0], N); !res || res != N) {
-            break;
-        }
-        std::cout << sret << std::endl;
-    }
+    std::cout << "connected to " << conn.peer_address() << std::endl;
+    constexpr size_t size = 1e8;
+    auto buffer = new std::vector<uint8_t>(size);
+    auto start = std::chrono::high_resolution_clock::now();
+    int writeSize = conn.write(buffer->data(), size).value();
+    int readSize = conn.read_n(buffer->data(), size).value();
+    auto end = std::chrono::high_resolution_clock::now();
+    delete buffer;
+    auto duration = end - start;
+    std::cout << "send: " << writeSize << " Bytes" << std::endl;
+    std::cout << "recv: " << readSize << " Bytes" << std::endl;
+    std::cout << "time cost: " << std::chrono::duration_cast<milliseconds>(duration).count()
+              << "ms" << std::endl;
     return 0;
 }

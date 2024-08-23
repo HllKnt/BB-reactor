@@ -15,7 +15,12 @@ auto Valve::peerState() -> State {
 
 bool Valve::tryTurnOn() {
     lock.acquire();
-    if (state != open && state != idle) {
+    if (state == shut) {
+        lock.release();
+        return false;
+    }
+    if (state == ready || state == busy) {
+        state = ready;
         lock.release();
         return false;
     }

@@ -12,16 +12,18 @@ using namespace frame;
 using namespace sockpp;
 
 template <>
-class SocketAbstract<sockpp::unix_socket>
+class Connection<sockpp::unix_socket>
 {
 public:
-    SocketAbstract(sockpp::unix_socket&& socket) : socket(std::move(socket)) {}
-
-    SocketAbstract(SocketAbstract<sockpp::unix_socket>&& socketAbstract)
-        : socket(std::move(socketAbstract.socket)) {
-        recvBufferSize = socket.recv_buffer_size().value();
-        sendBufferSize = socket.send_buffer_size().value();
+    Connection(sockpp::unix_socket&& socket) : socket(std::move(socket)) {
+        recvBufferSize = this->socket.recv_buffer_size().value();
+        sendBufferSize = this->socket.send_buffer_size().value();
     }
+
+    Connection(Connection&& connection)
+        : socket(std::move(connection.socket)),
+          recvBufferSize{connection.recvBufferSize},
+          sendBufferSize{connection.sendBufferSize} {}
 
     void setNonBlocking() { socket.set_non_blocking(); }
 
@@ -42,14 +44,14 @@ private:
 };
 
 template <>
-class AcceptorAbstract<sockpp::unix_socket>
+class Acceptor<sockpp::unix_socket>
 {
 public:
     void open(const std::string& address) { acceptor.open(address); }
 
     int fileDiscription() { return acceptor.handle(); }
 
-    SocketAbstract<sockpp::unix_socket> accept() { return acceptor.accept().release(); }
+    Connection<sockpp::unix_socket> accept() { return acceptor.accept().release(); }
 
 private:
     sockpp::unix_acceptor acceptor;

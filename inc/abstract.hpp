@@ -5,7 +5,7 @@
 
 namespace frame {
 template <typename Socket>
-class SocketAbstract
+class Connection
 {
 public:
     virtual void setNonBlocking() = 0;
@@ -17,11 +17,11 @@ public:
 };
 
 template <typename Socket>
-class AcceptorAbstract
+class Acceptor
 {
 public:
     virtual int fileDiscription() = 0;
-    virtual SocketAbstract<Socket> accept() = 0;
+    virtual Connection<Socket> accept() = 0;
     virtual void open(const std::string& address) = 0;
 };
 
