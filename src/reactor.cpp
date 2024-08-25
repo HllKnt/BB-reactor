@@ -129,10 +129,10 @@ auto Reactor::filter(const Epoll::EpollEevents& epollEvents) -> ValveHandles {
             continue;
         }
         if (event & EPOLLIN) {
-            res.emplace_back(fd, ValveHandle::Event::readFeasible);
+            res.emplace_back(fd, ValveHandle::Event::recvFeasible);
         }
         if (event & EPOLLOUT) {
-            res.emplace_back(fd, ValveHandle::Event::writeFeasible);
+            res.emplace_back(fd, ValveHandle::Event::sendFeasible);
         }
     }
     return res;

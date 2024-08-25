@@ -2,6 +2,7 @@
 #include <sockpp/unix_stream_socket.h>
 
 #include <chrono>
+#include <queue>
 #include <string_view>
 #include <thread>
 
@@ -60,9 +61,11 @@ private:
 using EchoServer = Server<sockpp::unix_socket>;
 
 template <>
-void EchoServer::readInfo(int fd, std::string_view query, std::vector<uint8_t>& buffer) {
-    writeInfo(fd, query);
-    buffer.clear();
+void EchoServer::readInfo(int fd, std::queue<std::vector<uint8_t>>& requests) {
+    uint8_t* info = requests.front().data();
+    size_t infoSize = requests.front().size();
+    writeInfo(fd, {(char*)info, infoSize});
+    requests.pop();
 }
 
 int main(int argc, char* argv[]) {

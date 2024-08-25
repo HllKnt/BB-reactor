@@ -4,8 +4,6 @@ using namespace frame;
 
 Valve::Valve(State state) : lock{1}, state{state} {}
 
-Valve::Valve(Valve&& valve) : lock{1}, state{valve.state} {}
-
 auto Valve::peerState() -> State {
     lock.acquire();
     State res = state;

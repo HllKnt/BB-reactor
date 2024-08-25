@@ -26,6 +26,9 @@ mainReactor负责处理TCP连接以及断开连接，subReactor负责监听socke
 ### Keeper
 `Keeper<Key,Value>`相当于`std::unordered_map<Key,std::shared_ptr<Value>>`和`std::weak_ptr<Value>`的结合体 <strike>使用方法比weak_ptr优雅</strike> 。考虑多线程场景，资源可能在使用前已被销毁或使用过程中被销毁，执行任务的线程需要尝试暂时拥有该资源。`Keeper`作为管理资源的中介，向线程“出租”资源，并需要线程“归还”资源，当资源已被“归还”才能释放销毁。特别的，`Keeper`本身也是资源，因此仍需考虑其自身与线程的生命周期问题。
 
+### Channel
+封装多线程的Socket读写操作，可能比较像Java的SocketChannel <strike>不太懂Java</strike>。
+
 ## 小测一下
 socket库使用[sockpp](https://github.com/fpagliughi/sockpp.git)。
 测试内容为服务端回传客户端发送的信息，客户端发送100MB信息，等待服务端回传。
