@@ -12,16 +12,16 @@ template <typename Key, typename Value>
 class Keeper
 {
 public:
-    friend Temp<Key, Value>;
-    using Member = std::tuple<int, bool, Value>;
-
     Keeper();
 
     void obtain(Key key, Value&& value);
-    void discard(Key key);
     Temp<Key, Value> lend(Key key);
+    void discard(Key key);
 
 private:
+    friend Temp<Key, Value>;
+    using Member = std::tuple<int, bool, Value>;
+
     std::binary_semaphore lock;
     std::unordered_map<Key, Member> repo;
 
@@ -39,8 +39,6 @@ public:
 
     bool exist();
     Value& peerValue();
-    Value& operator*();
-    Value* operator->();
 
 private:
     Key key;
@@ -62,26 +60,26 @@ void Keeper<Key, Value>::obtain(Key key, Value&& value) {
 }
 
 template <typename Key, typename Value>
+Temp<Key, Value> Keeper<Key, Value>::lend(Key key) {
+    Value* value = takeOut(key);
+    return {key, value, this};
+}
+
+template <typename Key, typename Value>
 void Keeper<Key, Value>::discard(Key key) {
     lock.acquire();
     if (not repo.contains(key)) {
         lock.release();
         return;
     }
-    auto&& [cnt, isExpired, value] = repo.at(key);
-    if (cnt <= 0) {
+    auto& [userCount, expired, value] = repo.at(key);
+    if (userCount <= 0) {
         repo.erase(key);
     }
     else {
-        isExpired = true;
+        expired = true;
     }
     lock.release();
-}
-
-template <typename Key, typename Value>
-Temp<Key, Value> Keeper<Key, Value>::lend(Key key) {
-    Value* value = takeOut(key);
-    return {key, value, this};
 }
 
 template <typename Key, typename Value>
@@ -91,12 +89,12 @@ Value* Keeper<Key, Value>::takeOut(Key key) {
         lock.release();
         return nullptr;
     }
-    auto&& [cnt, isExpired, value] = repo.at(key);
-    if (isExpired == true) {
+    auto& [userCount, expired, value] = repo.at(key);
+    if (expired) {
         lock.release();
         return nullptr;
     }
-    cnt++;
+    userCount++;
     Value* ans = &value;
     lock.release();
     return ans;
@@ -109,12 +107,12 @@ void Keeper<Key, Value>::takeBack(Key key) {
         lock.release();
         return;
     }
-    auto&& [cnt, isExpired, value] = repo.at(key);
-    if (isExpired == true) {
+    auto& [userCount, expired, value] = repo.at(key);
+    if (expired) {
         repo.erase(key);
     }
     else {
-        cnt--;
+        userCount--;
     }
     lock.release();
 }
@@ -139,15 +137,6 @@ bool Temp<Key, Value>::exist() {
 template <typename Key, typename Value>
 Value& Temp<Key, Value>::peerValue() {
     return *value;
-}
-template <typename Key, typename Value>
-Value& Temp<Key, Value>::operator*() {
-    return *value;
-}
-
-template <typename Key, typename Value>
-Value* Temp<Key, Value>::operator->() {
-    return value;
 }
 
 }  // namespace frame

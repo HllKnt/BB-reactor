@@ -45,7 +45,7 @@ void Reactor::logout(int fd) {
     lock.release();
 }
 
-void Reactor::reflash(int fd) {
+void Reactor::refresh(int fd) {
     lock.acquire();
     if (not epoll.exist(fd)) {
         lock.release();

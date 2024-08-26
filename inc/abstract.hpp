@@ -8,8 +8,8 @@ template <typename Socket>
 class Connection
 {
 public:
-    virtual void setNonBlocking() = 0;
     virtual int fileDiscription() = 0;
+    virtual void setNonBlocking() = 0;
     virtual size_t peerRecvBufferSize() = 0;
     virtual size_t peerSendBufferSize() = 0;
     virtual int recv(uint8_t* info, size_t len) = 0;

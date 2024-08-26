@@ -78,20 +78,20 @@ void Server<Socket>::tackleDisconnect(int fd) {
 template <typename Socket>
 void Server<Socket>::tackleNormalIO(const Reactor::ValveHandles& handles) {
     threadPool.lock();
-    for (auto& handle : handles) {
-        auto&& tmp = channels.lend(handle.fd);
+    for (auto& [fd, event] : handles) {
+        auto&& tmp = channels.lend(fd);
         if (not tmp.exist()) {
             continue;
         }
         Channel<Socket>& channel = tmp.peerValue();
-        if (not channel.tryTurnOnVavle(handle)) {
+        if (not channel.tryReadyIO(event)) {
             continue;
         }
-        if (handle.event == ValveHandle::Event::recvFeasible) {
-            threadPool.append([this, handle]() { tackleReadFeasible(handle.fd); });
+        if (event == ValveHandle::Event::recvFeasible) {
+            threadPool.append([this, fd]() { tackleReadFeasible(fd); });
         }
-        else if (handle.event == ValveHandle::Event::sendFeasible) {
-            threadPool.append([this, handle]() { tackleWriteFeasible(handle.fd); });
+        else if (event == ValveHandle::Event::sendFeasible) {
+            threadPool.append([this, fd]() { tackleWriteFeasible(fd); });
         }
     }
     threadPool.distribute();
@@ -105,8 +105,8 @@ void Server<Socket>::tackleReadFeasible(int fd) {
         return;
     }
     Channel<Socket>& channel = tmp.peerValue();
-    channel.recv([this](int fd, std::queue<std::vector<uint8_t>>& buffer) {
-        readInfo(fd, buffer);
+    channel.recv([this](int fd, std::queue<std::vector<uint8_t>>& requests) {
+        readInfo(fd, requests);
     });
 }
 
@@ -128,7 +128,7 @@ void Server<Socket>::writeInfo(int fd, std::string_view response) {
     }
     Channel<Socket>& channel = tmp.peerValue();
     if (not channel.tryWriteInfo(response)) {
-        subReactor.reflash(fd);
+        subReactor.refresh(fd);
     }
 }
 

@@ -22,7 +22,7 @@ public:
 
     void enroll(int fd);
     void logout(int fd);
-    void reflash(int fd);
+    void refresh(int fd);
     void setEdgeTrigger(int fd);
     void setLevelTrigger(int fd);
     void enroll(const ValveHandle&);

@@ -26,7 +26,7 @@ public:
     void send();
     void recv(const ReadInfo&);
     bool tryWriteInfo(std::string_view);
-    bool tryTurnOnVavle(const ValveHandle&);
+    bool tryReadyIO(ValveHandle::Event event);
 
 private:
     Valve recvValve, sendValve;
@@ -120,11 +120,11 @@ bool Channel<Socket>::tryWriteInfo(std::string_view reply) {
 }
 
 template <typename Socket>
-bool Channel<Socket>::tryTurnOnVavle(const ValveHandle& handle) {
-    if (handle.event == ValveHandle::Event::recvFeasible) {
+bool Channel<Socket>::tryReadyIO(ValveHandle::Event event) {
+    if (event == ValveHandle::Event::recvFeasible) {
         return recvValve.tryTurnOn();
     }
-    else if (handle.event == ValveHandle::Event::sendFeasible) {
+    else if (event == ValveHandle::Event::sendFeasible) {
         return sendValve.tryTurnOn();
     }
     return false;

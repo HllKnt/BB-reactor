@@ -2,10 +2,11 @@
 
 using namespace frame;
 
-ThreadPool::ThreadPool(size_t size) : over{false}, cnt{0}, semaphore{0}, head{1}, tail{1} {
+ThreadPool::ThreadPool(size_t size)
+    : over{false}, additionalTasks{0}, semaphore{0}, head{1}, tail{1} {
     for (int i = 0; i < size; i++) {
         threads.emplace_back(&ThreadPool::work, this);
-    } 
+    }
 }
 
 ThreadPool::~ThreadPool() { drain(); }
@@ -25,8 +26,8 @@ void ThreadPool::lock() { tail.acquire(); }
 void ThreadPool::unlock() { tail.release(); }
 
 void ThreadPool::distribute() {
-    semaphore.release(cnt);
-    cnt = 0;
+    semaphore.release(additionalTasks);
+    additionalTasks = 0;
 }
 
 void ThreadPool::work() {
