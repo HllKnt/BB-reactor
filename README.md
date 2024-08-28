@@ -31,6 +31,9 @@ mainReactor负责处理TCP连接以及断开连接，subReactor负责监听socke
 
 ## 小测一下
 socket库使用[sockpp](https://github.com/fpagliughi/sockpp.git)。
-测试内容为服务端回传客户端发送的信息，客户端发送100MB信息，等待服务端回传。
+测试客户端发送1MB信息，等待服务端回传。
 
-后续添加更正规的测试
+乒乓测试暴露一些问题
+
+- linux的epoll边缘触发似乎会丢失读取事件
+- 未考虑cpu处理任务的吞吐量，线程池的存放任务的队列没做添加限制，存在bug

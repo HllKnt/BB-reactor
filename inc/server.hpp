@@ -1,6 +1,7 @@
 #pragma once
 
 #include <sys/ioctl.h>
+#include <sys/socket.h>
 
 #include <vector>
 
@@ -16,9 +17,11 @@ template <typename Socket>
 class Server
 {
 public:
-    Server(const std::string& address);
+    Server();
     ~Server();
 
+    template <typename... Args>
+    void open(const Args&...);
     void writeInfo(int fd, std::string_view response);
     virtual void readInfo(int fd, std::queue<std::vector<uint8_t>>& requests);
 
@@ -30,6 +33,7 @@ private:
 
     void tackleConnect();
     void tackleDisconnect(int fd);
+    void tackleClean(int fd);
     void tackleReadFeasible(int fd);
     void tackleWriteFeasible(int fd);
     void tackleNormalIO(const Reactor::ValveHandles&);
@@ -39,15 +43,13 @@ private:
 
 namespace frame {
 template <typename Socket>
-Server<Socket>::Server(const std::string& address)
-    : threadPool{std::thread::hardware_concurrency()} {
+Server<Socket>::Server() : threadPool{std::thread::hardware_concurrency()} {
     mainReactor.setNormalIO([this](const Reactor::ValveHandles&) { tackleConnect(); });
-    mainReactor.setClean([this](int fd) { tackleDisconnect(fd); });
     subReactor.setNormalIO([this](const Reactor::ValveHandles& handles) {
         tackleNormalIO(handles);
     });
-    acceptor.open(address);
-    mainReactor.enroll({acceptor.fileDiscription(), ValveHandle::Event::recvFeasible});
+    subReactor.setDisconnect([this](int fd) { tackleDisconnect(fd); });
+    subReactor.setClean([this](int fd) { tackleClean(fd); });
 }
 
 template <typename Socket>
@@ -56,21 +58,31 @@ Server<Socket>::~Server() {
 }
 
 template <typename Socket>
+template <typename... Args>
+void Server<Socket>::open(const Args&... args) {
+    acceptor.open(args...);
+    mainReactor.enroll({acceptor.fileDiscription(), ValveHandle::Event::recvFeasible});
+}
+
+template <typename Socket>
 void Server<Socket>::tackleConnect() {
     auto&& connection = acceptor.accept();
     int fd = connection.fileDiscription();
     connection.setNonBlocking();
     channels.obtain(fd, {std::move(connection)});
-    mainReactor.enroll(fd);
     subReactor.enroll(fd);
-    subReactor.setEdgeTrigger(fd);
-    subReactor.enroll({fd, ValveHandle::Event::sendFeasible});
+    // subReactor.setEdgeTrigger(fd);
+    // subReactor.enroll({fd, ValveHandle::Event::sendFeasible});
     subReactor.enroll({fd, ValveHandle::Event::recvFeasible});
 }
 
 template <typename Socket>
 void Server<Socket>::tackleDisconnect(int fd) {
-    mainReactor.logout(fd);
+    shutdown(fd, SHUT_WR);
+}
+
+template <typename Socket>
+void Server<Socket>::tackleClean(int fd) {
     subReactor.logout(fd);
     channels.discard(fd);
 }

@@ -30,8 +30,8 @@ void Reactor::enroll(int fd) {
         lock.release();
         return;
     }
-    constexpr uint32_t null = 0;
-    epoll.add(fd, null);
+    constexpr uint32_t defaultEvent = EPOLLRDHUP;
+    epoll.add(fd, defaultEvent);
     lock.release();
 }
 
@@ -107,9 +107,11 @@ void Reactor::setLevelTrigger(int fd) {
     lock.release();
 }
 
-void Reactor::setClean(const CleanCallback& callback) { clean = callback; }
+void Reactor::setNormalIO(const NormalIO& callback) { normalIO = callback; }
 
-void Reactor::setNormalIO(const NormalIOCallback& callback) { normalIO = callback; }
+void Reactor::setDisconnect(const Disconnect& callback) { disconnect = callback; }
+
+void Reactor::setClean(const Clean& callback) { clean = callback; }
 
 void Reactor::wait() {
     while (true) {
@@ -126,6 +128,10 @@ auto Reactor::filter(const Epoll::EpollEevents& epollEvents) -> ValveHandles {
     for (auto& [fd, event] : epollEvents) {
         if (event & EPOLLHUP) {
             clean(fd);
+            continue;
+        }
+        if (event & EPOLLRDHUP) {
+            disconnect(fd);
             continue;
         }
         if (event & EPOLLIN) {

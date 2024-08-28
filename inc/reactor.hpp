@@ -14,8 +14,9 @@ class Reactor
 {
 public:
     using ValveHandles = std::vector<ValveHandle>;
-    using CleanCallback = std::function<void(int)>;
-    using NormalIOCallback = std::function<void(const ValveHandles&)>;
+    using NormalIO = std::function<void(const ValveHandles&)>;
+    using Disconnect = std::function<void(int)>;
+    using Clean = std::function<void(int)>;
 
     Reactor();
     ~Reactor();
@@ -27,16 +28,18 @@ public:
     void setLevelTrigger(int fd);
     void enroll(const ValveHandle&);
     void logout(const ValveHandle&);
-    void setClean(const CleanCallback&);
-    void setNormalIO(const NormalIOCallback&);
+    void setNormalIO(const NormalIO&);
+    void setDisconnect(const Disconnect&);
+    void setClean(const Clean&);
 
 private:
     int stop;
     bool over;
     Epoll epoll;
+    Clean clean;
+    Disconnect disconnect;
+    NormalIO normalIO;
     std::thread react;
-    CleanCallback clean;
-    NormalIOCallback normalIO;
     std::binary_semaphore lock;
 
     void wait();

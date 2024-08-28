@@ -62,7 +62,9 @@ void Channel<Socket>::recv(const ReadInfo& readInfo) {
         if (infoSize <= 0) {
             continue;
         }
-        recvBuffer->emplace();
+        if (recvBuffer->empty() || not recvBuffer->back().empty()) {
+            recvBuffer->emplace();
+        }
         auto& buffer = recvBuffer->back();
         buffer.resize(infoSize);
         connection.recv(buffer.data(), infoSize);

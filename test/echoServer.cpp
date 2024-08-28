@@ -1,5 +1,5 @@
-#include <sockpp/unix_acceptor.h>
-#include <sockpp/unix_stream_socket.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 #include <chrono>
 #include <queue>
@@ -8,15 +8,17 @@
 
 #include "abstract.hpp"
 #include "server.hpp"
+#include "sockpp/tcp_acceptor.h"
+#include "sockpp/tcp_socket.h"
 
 using namespace frame;
 using namespace sockpp;
 
 template <>
-class Connection<sockpp::unix_socket>
+class Connection<tcp_socket>
 {
 public:
-    Connection(sockpp::unix_socket&& socket) : socket(std::move(socket)) {
+    Connection(tcp_socket&& socket) : socket(std::move(socket)) {
         recvBufferSize = this->socket.recv_buffer_size().value();
         sendBufferSize = this->socket.send_buffer_size().value();
     }
@@ -41,36 +43,43 @@ public:
 private:
     size_t recvBufferSize;
     size_t sendBufferSize;
-    sockpp::unix_socket socket;
+    tcp_socket socket;
 };
 
 template <>
-class Acceptor<sockpp::unix_socket>
+class Acceptor<tcp_socket>
 {
 public:
-    void open(const std::string& address) { acceptor.open(address); }
+    void open(const string& address, uint16_t port) { acceptor.open({address, port}); }
 
     int fileDiscription() { return acceptor.handle(); }
 
-    Connection<sockpp::unix_socket> accept() { return acceptor.accept().release(); }
+    Connection<tcp_socket> accept() { return acceptor.accept().release(); }
 
 private:
-    sockpp::unix_acceptor acceptor;
+    tcp_acceptor acceptor;
 };
 
-using EchoServer = Server<sockpp::unix_socket>;
+using Base = Server<tcp_socket>;
 
-template <>
+class EchoServer : public Base
+{
+public:
+    void readInfo(int fd, std::queue<std::vector<uint8_t>>& requests);
+};
+
 void EchoServer::readInfo(int fd, std::queue<std::vector<uint8_t>>& requests) {
-    uint8_t* info = requests.front().data();
-    size_t infoSize = requests.front().size();
-    writeInfo(fd, {(char*)info, infoSize});
-    requests.pop();
+    auto& request = requests.back();
+    uint8_t* info = request.data();
+    size_t infoSize = request.size();
+    writeInfo(fd, {(const char*)info, infoSize});
+    request.clear();
 }
 
 int main(int argc, char* argv[]) {
     sockpp::initialize();
-    EchoServer echoServer("\0sock");
+    EchoServer echoServer;
+    echoServer.open(std::string{"127.0.0.1"}, 1234);
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }

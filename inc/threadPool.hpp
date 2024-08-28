@@ -26,7 +26,7 @@ private:
     std::vector<std::thread> threads;
     std::binary_semaphore head, tail;
     std::counting_semaphore<1> semaphore;
-    std::queue<std::function<void()>> tasks;
+    std::unique_ptr<std::queue<std::function<void()>>> tasks;
 
     void work();
 };
@@ -39,7 +39,7 @@ auto ThreadPool::append(F&& f, Args&&... args) -> std::future<decltype(f(args...
     additionalTasks++;
     auto&& func = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
     auto&& task = std::make_shared<std::packaged_task<decltype(f(args...))()>>(func);
-    tasks.emplace([task]() { (*task)(); });
+    tasks->emplace([task]() { (*task)(); });
     return task->get_future();
 }
 

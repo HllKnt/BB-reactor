@@ -1,9 +1,16 @@
 #include "../inc/threadPool.hpp"
 
+#include <cstdio>
+
 using namespace frame;
 
 ThreadPool::ThreadPool(size_t size)
-    : over{false}, additionalTasks{0}, semaphore{0}, head{1}, tail{1} {
+    : over{false},
+      additionalTasks{0},
+      semaphore{0},
+      head{1},
+      tail{1},
+      tasks{new std::queue<std::function<void()>>} {
     for (int i = 0; i < size; i++) {
         threads.emplace_back(&ThreadPool::work, this);
     }
@@ -33,11 +40,12 @@ void ThreadPool::distribute() {
 void ThreadPool::work() {
     while (true) {
         semaphore.acquire();
-        if (over)
+        if (over) {
             return;
+        }
         head.acquire();
-        auto task = tasks.front();
-        tasks.pop();
+        auto task = tasks->front();
+        tasks->pop();
         head.release();
         task();
     }

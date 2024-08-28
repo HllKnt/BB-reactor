@@ -1,28 +1,29 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
-#include <string>
 
 namespace frame {
 template <typename Socket>
 class Connection
 {
 public:
-    virtual int fileDiscription() = 0;
-    virtual void setNonBlocking() = 0;
-    virtual size_t peerRecvBufferSize() = 0;
-    virtual size_t peerSendBufferSize() = 0;
-    virtual int recv(uint8_t* info, size_t len) = 0;
-    virtual int send(uint8_t* info, size_t len) = 0;
+    int fileDiscription();
+    void setNonBlocking();
+    size_t peerRecvBufferSize();
+    size_t peerSendBufferSize();
+    int recv(uint8_t* info, size_t len);
+    int send(uint8_t* info, size_t len);
 };
 
 template <typename Socket>
 class Acceptor
 {
 public:
-    virtual int fileDiscription() = 0;
-    virtual Connection<Socket> accept() = 0;
-    virtual void open(const std::string& address) = 0;
+    int fileDiscription();
+    Connection<Socket> accept();
+    template <typename... Args>
+    void open(const Args&... address);
 };
 
 }  // namespace frame
