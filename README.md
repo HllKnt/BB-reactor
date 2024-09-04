@@ -12,10 +12,7 @@
 参考测试案例
 
 - 特化abstract.hpp的接口类，需要实现socket的recv和send功能，设置socket为非阻塞，查看socket的文件描述符和内核发送接受缓存区大小。
-以及acceptor的accept功能，查看acceptor文件描述符。
-<strike>
-应该基本上是tcp socket，[sockpp](https://github.com/fpagliughi/sockpp.git)写的比较完善，就不造更多的轮子了 ^_^ 
-</strike>
+以及acceptor的accept功能，查看acceptor文件描述符。<strike>应该基本上是tcp socket，[sockpp](https://github.com/fpagliughi/sockpp.git)写的比较完善，就不造更多的轮子了 ^_^ </strike>
 - 继承server，重载server的readInfo函数，在此处实现业务逻辑。
 
 ## 小测一下
