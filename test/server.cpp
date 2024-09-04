@@ -14,6 +14,8 @@
 using namespace frame;
 using namespace sockpp;
 
+namespace frame {
+
 template <>
 class Connection<tcp_socket>
 {
@@ -50,7 +52,12 @@ template <>
 class Acceptor<tcp_socket>
 {
 public:
-    void open(const string& address, uint16_t port) { acceptor.open({address, port}); }
+    void open(const string& address, uint16_t port) {
+        acceptor.open({address, port});
+        if (acceptor.handle() < 0) {
+            throw("error ip or port");
+        }
+    }
 
     int fileDiscription() { return acceptor.handle(); }
 
@@ -59,6 +66,8 @@ public:
 private:
     tcp_acceptor acceptor;
 };
+
+}  // namespace frame
 
 using Base = Server<tcp_socket>;
 
@@ -79,7 +88,7 @@ void EchoServer::readInfo(int fd, std::queue<std::vector<uint8_t>>& requests) {
 int main(int argc, char* argv[]) {
     sockpp::initialize();
     EchoServer echoServer;
-    echoServer.open(std::string{"127.0.0.1"}, 1234);
+    echoServer.open(std::string{"127.0.0.1"}, 1145);
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 
 #include <algorithm>
@@ -23,10 +24,11 @@ public:
     Channel(Connection<Socket>&&);
     Channel(Channel&&);
 
-    void send();
+    bool trySendRest();
+    bool trySend(std::string_view);
     void recv(const ReadInfo&);
-    bool tryWriteInfo(std::string_view);
-    bool tryReadyIO(ValveHandle::Event event);
+    bool tryReadyRecv();
+    bool tryReadySend();
 
 private:
     Valve recvValve, sendValve;
@@ -57,7 +59,7 @@ template <typename Socket>
 void Channel<Socket>::recv(const ReadInfo& readInfo) {
     size_t infoSize = 0;
     int fd = connection.fileDiscription();
-    while (recvValve.tryStartUp()) {
+    while (recvValve.tryStartUpWithAgain()) {
         ioctl(fd, FIONREAD, &infoSize);
         if (infoSize <= 0) {
             continue;
@@ -73,8 +75,8 @@ void Channel<Socket>::recv(const ReadInfo& readInfo) {
 }
 
 template <typename Socket>
-void Channel<Socket>::send() {
-    const auto trySendAndAgain = [&]() -> bool {
+bool Channel<Socket>::trySendRest() {
+    const auto trySendWithAgain = [&]() -> bool {
         if (sendBuffer->empty()) {
             return false;
         }
@@ -92,15 +94,17 @@ void Channel<Socket>::send() {
         sendBuffer->pop();
         return true;
     };
-    while (sendValve.tryStartUp()) {
-        while (trySendAndAgain()) {
+    bool res;
+    while (sendValve.tryStartUpWithAgain()) {
+        while (trySendWithAgain()) {
         }
-        sendValve.tryDisable([&]() -> bool { return sendBuffer->empty(); });
+        res = sendValve.tryDisable([&]() -> bool { return sendBuffer->empty(); });
     }
+    return res;
 }
 
 template <typename Socket>
-bool Channel<Socket>::tryWriteInfo(std::string_view reply) {
+bool Channel<Socket>::trySend(std::string_view reply) {
     size_t maxSize = connection.peerSendBufferSize();
     uint8_t* info = (uint8_t*)reply.data();
     size_t infoSize = reply.size();
@@ -122,14 +126,13 @@ bool Channel<Socket>::tryWriteInfo(std::string_view reply) {
 }
 
 template <typename Socket>
-bool Channel<Socket>::tryReadyIO(ValveHandle::Event event) {
-    if (event == ValveHandle::Event::recvFeasible) {
-        return recvValve.tryTurnOn();
-    }
-    else if (event == ValveHandle::Event::sendFeasible) {
-        return sendValve.tryTurnOn();
-    }
-    return false;
+bool Channel<Socket>::tryReadyRecv() {
+    return recvValve.tryTurnOnWithAgain();
+}
+
+template <typename Socket>
+bool Channel<Socket>::tryReadySend() {
+    return sendValve.tryTurnOnWithAgain();
 }
 
 }  // namespace frame

@@ -2,17 +2,21 @@
 
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
+#include <sys/socket.h>
 
 using namespace frame;
+
 Reactor::Reactor()
-    : over{false},
+    : lock{1},
+      over{false},
+      defaultConfig{0},
       stop{eventfd(0, 0)},
       react{&Reactor::wait, this},
-      lock{1},
       clean{[](int) {}},
-      normalIO{[](const ValveHandles&) {}} {
-    epoll.add(stop, EPOLLIN);
-    epoll.setEdgeTrigger(stop);
+      disconnect([](int) {}),
+      recv{[](const Handles&) {}},
+      send{[](const Handles&) {}} {
+    epoll.add(stop, EPOLLIN | EPOLLET);
 }
 
 Reactor::~Reactor() {
@@ -30,8 +34,7 @@ void Reactor::enroll(int fd) {
         lock.release();
         return;
     }
-    constexpr uint32_t defaultEvent = EPOLLRDHUP;
-    epoll.add(fd, defaultEvent);
+    epoll.add(fd, defaultConfig);
     lock.release();
 }
 
@@ -56,62 +59,17 @@ void Reactor::refresh(int fd) {
     lock.release();
 }
 
-void Reactor::enroll(const ValveHandle& handle) {
-    int fd = handle.fd;
-    uint32_t event = handle.event;
-    lock.acquire();
-    if (epoll.exist(fd) && (epoll.peerEvent(fd) & event)) {
-        lock.release();
-        return;
-    }
-    if (not epoll.exist(fd)) {
-        epoll.add(fd, event);
-        lock.release();
-        return;
-    }
-    event |= epoll.peerEvent(fd);
-    epoll.mod(fd, event);
-    lock.release();
-}
+void Reactor::appendEvent(Event event) { defaultConfig |= event; }
 
-void Reactor::logout(const ValveHandle& handle) {
-    int fd = handle.fd;
-    uint32_t event = handle.event;
-    lock.acquire();
-    if (not epoll.exist(fd) || not(epoll.peerEvent(fd) & event)) {
-        lock.release();
-        return;
-    }
-    event = epoll.peerEvent(fd) & (~event);
-    epoll.mod(fd, event);
-    lock.release();
-}
+void Reactor::setTrigger(Trigger trigger) { defaultConfig |= trigger; }
 
-void Reactor::setEdgeTrigger(int fd) {
-    lock.acquire();
-    if (not epoll.exist(fd)) {
-        lock.release();
-        return;
-    }
-    epoll.setEdgeTrigger(fd);
-    lock.release();
-}
+void Reactor::setRecv(const Recv& callback) { recv = callback; }
 
-void Reactor::setLevelTrigger(int fd) {
-    lock.acquire();
-    if (not epoll.exist(fd)) {
-        lock.release();
-        return;
-    }
-    epoll.setLevelTrigger(fd);
-    lock.release();
-}
-
-void Reactor::setNormalIO(const NormalIO& callback) { normalIO = callback; }
-
-void Reactor::setDisconnect(const Disconnect& callback) { disconnect = callback; }
+void Reactor::setSend(const Send& callback) { send = callback; }
 
 void Reactor::setClean(const Clean& callback) { clean = callback; }
+
+void Reactor::setDisconnect(const Disconnect& callback) { disconnect = callback; }
 
 void Reactor::wait() {
     while (true) {
@@ -119,12 +77,12 @@ void Reactor::wait() {
         if (over) {
             return;
         }
-        normalIO(filter(epollEvents));
+        filter(epollEvents);
     }
 }
 
-auto Reactor::filter(const Epoll::EpollEevents& epollEvents) -> ValveHandles {
-    ValveHandles res;
+void Reactor::filter(const Epoll::EpollEevents& epollEvents) {
+    Handles recvHandles, sendHandles;
     for (auto& [fd, event] : epollEvents) {
         if (event & EPOLLHUP) {
             clean(fd);
@@ -135,11 +93,16 @@ auto Reactor::filter(const Epoll::EpollEevents& epollEvents) -> ValveHandles {
             continue;
         }
         if (event & EPOLLIN) {
-            res.emplace_back(fd, ValveHandle::Event::recvFeasible);
+            recvHandles.push_back(fd);
         }
         if (event & EPOLLOUT) {
-            res.emplace_back(fd, ValveHandle::Event::sendFeasible);
+            sendHandles.push_back(fd);
         }
     }
-    return res;
+    if (not recvHandles.empty()) {
+        this->recv(recvHandles);
+    }
+    if (not sendHandles.empty()) {
+        this->send(sendHandles);
+    }
 }

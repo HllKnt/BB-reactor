@@ -1,9 +1,9 @@
-add_executable(client client.cpp)
-add_executable(pingpangClient pingpangClient.cpp)
-add_executable(echoServer echoServer.cpp)
+add_executable(server server.cpp)
+add_executable(echo echo.cpp)
+add_executable(pingpang pingpang.cpp)
 
 find_package(sockpp REQUIRED)
 
-target_link_libraries(client PRIVATE Sockpp::sockpp frame)
-target_link_libraries(pingpangClient PRIVATE Sockpp::sockpp frame)
-target_link_libraries(echoServer PRIVATE Sockpp::sockpp frame)
+target_link_libraries(server PRIVATE Sockpp::sockpp frame)
+target_link_libraries(echo PRIVATE Sockpp::sockpp frame)
+target_link_libraries(pingpang PRIVATE Sockpp::sockpp frame)

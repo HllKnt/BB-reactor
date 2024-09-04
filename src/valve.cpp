@@ -11,7 +11,7 @@ auto Valve::peerState() -> State {
     return res;
 }
 
-bool Valve::tryTurnOn() {
+bool Valve::tryTurnOnWithAgain() {
     lock.acquire();
     if (state == shut) {
         lock.release();
@@ -27,7 +27,7 @@ bool Valve::tryTurnOn() {
     return true;
 }
 
-bool Valve::tryStartUp() {
+bool Valve::tryStartUpWithAgain() {
     lock.acquire();
     if (state == shut) {
         lock.release();
@@ -43,7 +43,7 @@ bool Valve::tryStartUp() {
     return true;
 }
 
-bool Valve::tryEnable(const Empty& empty) {
+bool Valve::tryEnable(const BufferIsEmpty& empty) {
     lock.acquire();
     if (state != shut || empty()) {
         lock.release();
@@ -54,7 +54,7 @@ bool Valve::tryEnable(const Empty& empty) {
     return true;
 }
 
-bool Valve::tryDisable(const Empty& empty) {
+bool Valve::tryDisable(const BufferIsEmpty& empty) {
     lock.acquire();
     if (not empty()) {
         lock.release();

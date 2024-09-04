@@ -1,8 +1,8 @@
 #pragma once
 
-#include <sys/ioctl.h>
 #include <sys/socket.h>
 
+#include <cstdio>
 #include <vector>
 
 #include "abstract.hpp"
@@ -10,7 +10,6 @@
 #include "keeper.hpp"
 #include "reactor.hpp"
 #include "threadPool.hpp"
-#include "valve.hpp"
 
 namespace frame {
 template <typename Socket>
@@ -32,11 +31,12 @@ private:
     Keeper<int, Channel<Socket>> channels;
 
     void tackleConnect();
-    void tackleDisconnect(int fd);
     void tackleClean(int fd);
-    void tackleReadFeasible(int fd);
-    void tackleWriteFeasible(int fd);
-    void tackleNormalIO(const Reactor::ValveHandles&);
+    void tackleDisconnect(int fd);
+    void tackleRecvFeasible(int fd);
+    void tackleSendFeasible(int fd);
+    void readyToRecv(const Reactor::Handles&);
+    void readyToSend(const Reactor::Handles&);
 };
 
 }  // namespace frame
@@ -44,12 +44,17 @@ private:
 namespace frame {
 template <typename Socket>
 Server<Socket>::Server() : threadPool{std::thread::hardware_concurrency()} {
-    mainReactor.setNormalIO([this](const Reactor::ValveHandles&) { tackleConnect(); });
-    subReactor.setNormalIO([this](const Reactor::ValveHandles& handles) {
-        tackleNormalIO(handles);
-    });
-    subReactor.setDisconnect([this](int fd) { tackleDisconnect(fd); });
+    mainReactor.appendEvent(Reactor::recvFeasible);
+    mainReactor.setRecv([this](const Reactor::Handles&) { tackleConnect(); });
+    subReactor.setTrigger(Reactor::edge);
+    subReactor.appendEvent(Reactor::sendShut);
+    subReactor.appendEvent(Reactor::recvShut);
+    subReactor.appendEvent(Reactor::recvFeasible);
+    subReactor.appendEvent(Reactor::sendFeasible);
     subReactor.setClean([this](int fd) { tackleClean(fd); });
+    subReactor.setDisconnect([this](int fd) { tackleDisconnect(fd); });
+    subReactor.setRecv([this](const Reactor::Handles& handles) { readyToRecv(handles); });
+    subReactor.setSend([this](const Reactor::Handles& handles) { readyToSend(handles); });
 }
 
 template <typename Socket>
@@ -61,19 +66,16 @@ template <typename Socket>
 template <typename... Args>
 void Server<Socket>::open(const Args&... args) {
     acceptor.open(args...);
-    mainReactor.enroll({acceptor.fileDiscription(), ValveHandle::Event::recvFeasible});
+    mainReactor.enroll({acceptor.fileDiscription()});
 }
 
 template <typename Socket>
 void Server<Socket>::tackleConnect() {
-    auto&& connection = acceptor.accept();
+    auto connection = acceptor.accept();
     int fd = connection.fileDiscription();
     connection.setNonBlocking();
     channels.obtain(fd, {std::move(connection)});
     subReactor.enroll(fd);
-    // subReactor.setEdgeTrigger(fd);
-    // subReactor.enroll({fd, ValveHandle::Event::sendFeasible});
-    subReactor.enroll({fd, ValveHandle::Event::recvFeasible});
 }
 
 template <typename Socket>
@@ -88,30 +90,43 @@ void Server<Socket>::tackleClean(int fd) {
 }
 
 template <typename Socket>
-void Server<Socket>::tackleNormalIO(const Reactor::ValveHandles& handles) {
+void Server<Socket>::readyToRecv(const Reactor::Handles& handles) {
     threadPool.lock();
-    for (auto& [fd, event] : handles) {
+    for (auto& fd : handles) {
         auto&& tmp = channels.lend(fd);
         if (not tmp.exist()) {
             continue;
         }
         Channel<Socket>& channel = tmp.peerValue();
-        if (not channel.tryReadyIO(event)) {
+        if (not channel.tryReadyRecv()) {
             continue;
         }
-        if (event == ValveHandle::Event::recvFeasible) {
-            threadPool.append([this, fd]() { tackleReadFeasible(fd); });
-        }
-        else if (event == ValveHandle::Event::sendFeasible) {
-            threadPool.append([this, fd]() { tackleWriteFeasible(fd); });
-        }
+        threadPool.append([this, fd]() { tackleRecvFeasible(fd); });
     }
     threadPool.distribute();
     threadPool.unlock();
 }
 
 template <typename Socket>
-void Server<Socket>::tackleReadFeasible(int fd) {
+void Server<Socket>::readyToSend(const Reactor::Handles& handles) {
+    threadPool.lock();
+    for (auto& fd : handles) {
+        auto&& tmp = channels.lend(fd);
+        if (not tmp.exist()) {
+            continue;
+        }
+        Channel<Socket>& channel = tmp.peerValue();
+        if (not channel.tryReadySend()) {
+            continue;
+        }
+        threadPool.append([this, fd]() { tackleSendFeasible(fd); });
+    }
+    threadPool.distribute();
+    threadPool.unlock();
+}
+
+template <typename Socket>
+void Server<Socket>::tackleRecvFeasible(int fd) {
     auto&& tmp = channels.lend(fd);
     if (not tmp.exist()) {
         return;
@@ -123,13 +138,13 @@ void Server<Socket>::tackleReadFeasible(int fd) {
 }
 
 template <typename Socket>
-void Server<Socket>::tackleWriteFeasible(int fd) {
+void Server<Socket>::tackleSendFeasible(int fd) {
     auto&& tmp = channels.lend(fd);
     if (not tmp.exist()) {
         return;
     }
     Channel<Socket>& channel = tmp.peerValue();
-    channel.send();
+    channel.trySendRest();
 }
 
 template <typename Socket>
@@ -139,7 +154,7 @@ void Server<Socket>::writeInfo(int fd, std::string_view response) {
         return;
     }
     Channel<Socket>& channel = tmp.peerValue();
-    if (not channel.tryWriteInfo(response)) {
+    if (not channel.trySend(response)) {
         subReactor.refresh(fd);
     }
 }

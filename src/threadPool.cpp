@@ -6,11 +6,12 @@ using namespace frame;
 
 ThreadPool::ThreadPool(size_t size)
     : over{false},
-      additionalTasks{0},
       semaphore{0},
       head{1},
       tail{1},
-      tasks{new std::queue<std::function<void()>>} {
+      additionalTasks{0},
+      poolCapacity{10 * size},
+      buffer{new std::queue<std::function<void()>>} {
     for (int i = 0; i < size; i++) {
         threads.emplace_back(&ThreadPool::work, this);
     }
@@ -33,6 +34,14 @@ void ThreadPool::lock() { tail.acquire(); }
 void ThreadPool::unlock() { tail.release(); }
 
 void ThreadPool::distribute() {
+    while (buffer->size() > poolCapacity) {
+        head.acquire();
+        auto task = buffer->front();
+        buffer->pop();
+        head.release();
+        task();
+        additionalTasks--;
+    }
     semaphore.release(additionalTasks);
     additionalTasks = 0;
 }
@@ -44,8 +53,8 @@ void ThreadPool::work() {
             return;
         }
         head.acquire();
-        auto task = tasks->front();
-        tasks->pop();
+        auto task = buffer->front();
+        buffer->pop();
         head.release();
         task();
     }

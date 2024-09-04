@@ -9,12 +9,11 @@ using namespace sockpp;
 int main(int argc, char* argv[]) {
     sockpp::initialize();
     tcp_connector conn;
-    conn.connect({"127.0.0.1", 1234});
-    std::cout << "connected to " << conn.peer_address() << std::endl;
+    conn.connect({"127.0.0.1", 1145});
     constexpr size_t size = 1e6;
     auto buffer = new std::vector<uint8_t>(size);
     auto start = std::chrono::high_resolution_clock::now();
-    int writeSize = conn.write(buffer->data(), size).value();
+    int writeSize = conn.send(buffer->data(), size).value();
     int readSize = conn.read_n(buffer->data(), size).value();
     auto end = std::chrono::high_resolution_clock::now();
     delete buffer;

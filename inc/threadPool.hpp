@@ -22,11 +22,12 @@ public:
 
 private:
     bool over;
+    size_t poolCapacity;
     size_t additionalTasks;
     std::vector<std::thread> threads;
     std::binary_semaphore head, tail;
     std::counting_semaphore<1> semaphore;
-    std::unique_ptr<std::queue<std::function<void()>>> tasks;
+    std::unique_ptr<std::queue<std::function<void()>>> buffer;
 
     void work();
 };
@@ -36,10 +37,10 @@ private:
 namespace frame {
 template <typename F, typename... Args>
 auto ThreadPool::append(F&& f, Args&&... args) -> std::future<decltype(f(args...))> {
-    additionalTasks++;
     auto&& func = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
     auto&& task = std::make_shared<std::packaged_task<decltype(f(args...))()>>(func);
-    tasks->emplace([task]() { (*task)(); });
+    buffer->emplace([task]() { (*task)(); });
+    additionalTasks++;
     return task->get_future();
 }
 

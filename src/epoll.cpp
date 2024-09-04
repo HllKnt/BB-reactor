@@ -1,8 +1,14 @@
 #include "epoll.hpp"
 
+#include <sys/epoll.h>
+#include <unistd.h>
+
+#include <vector>
+
 using namespace frame;
 
-Epoll::Epoll() : self{epoll_create1(0)}, epollEvents{new std::vector<epoll_event>(1024)} {}
+Epoll::Epoll()
+    : self{epoll_create1(EPOLL_CLOEXEC)}, buffer{new std::vector<epoll_event>(1024)} {}
 
 Epoll::~Epoll() { close(self); }
 
@@ -31,30 +37,13 @@ void Epoll::del(int fd) {
     epoll_ctl(self, EPOLL_CTL_DEL, fd, nullptr);
 }
 
-void Epoll::setEdgeTrigger(int fd) {
-    auto& event = roster.at(fd);
-    event |= EPOLLET;
-    epoll_event epollEvent = {};
-    epollEvent.data.fd = fd;
-    epollEvent.events = event;
-    epoll_ctl(self, EPOLL_CTL_MOD, fd, &epollEvent);
-}
-
-void Epoll::setLevelTrigger(int fd) {
-    auto& event = roster.at(fd);
-    event &= ~EPOLLET;
-    epoll_event epollEvent = {};
-    epollEvent.data.fd = fd;
-    epollEvent.events = event;
-    epoll_ctl(self, EPOLL_CTL_MOD, fd, &epollEvent);
-}
-
 auto Epoll::wait() -> EpollEevents {
-    int size = epoll_wait(self, epollEvents->data(), epollEvents->capacity(), -1);
-    epollEvents->resize(size);
+    int size = epoll_wait(self, buffer->data(), buffer->capacity(), -1);
     EpollEevents res;
-    for (auto& i : *epollEvents) {
-        res.emplace_back(i.data.fd, i.events);
+    for (int i = 0; i < size; i++) {
+        int fd = (*buffer)[i].data.fd;
+        uint32_t event = (*buffer)[i].events;
+        res.emplace_back((int)fd, (uint32_t)event);
     }
     return res;
 }
