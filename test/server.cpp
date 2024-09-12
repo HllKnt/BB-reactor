@@ -1,3 +1,5 @@
+#include "server.hpp"
+
 #include <netinet/in.h>
 #include <sys/socket.h>
 
@@ -7,7 +9,6 @@
 #include <thread>
 
 #include "abstract.hpp"
-#include "server.hpp"
 #include "sockpp/tcp_acceptor.h"
 #include "sockpp/tcp_socket.h"
 
@@ -78,11 +79,9 @@ public:
 };
 
 void EchoServer::readInfo(int fd, std::queue<std::vector<uint8_t>>& requests) {
-    auto& request = requests.back();
-    uint8_t* info = request.data();
-    size_t infoSize = request.size();
-    writeInfo(fd, {(const char*)info, infoSize});
-    request.clear();
+    constexpr int dataSize = 1e6;
+    static char data[dataSize];
+    writeInfo(fd, {(const char*)data, sizeof(data)});
 }
 
 int main(int argc, char* argv[]) {

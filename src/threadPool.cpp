@@ -10,7 +10,7 @@ ThreadPool::ThreadPool(size_t size)
       head{1},
       tail{1},
       additionalTasks{0},
-      poolCapacity{10 * size},
+      capacity{500 * size},
       buffer{new std::queue<std::function<void()>>} {
     for (int i = 0; i < size; i++) {
         threads.emplace_back(&ThreadPool::work, this);
@@ -34,7 +34,7 @@ void ThreadPool::lock() { tail.acquire(); }
 void ThreadPool::unlock() { tail.release(); }
 
 void ThreadPool::distribute() {
-    while (buffer->size() > poolCapacity) {
+    while (buffer->size() > capacity) {
         head.acquire();
         auto task = buffer->front();
         buffer->pop();

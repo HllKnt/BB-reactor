@@ -22,7 +22,7 @@ public:
 
 private:
     bool over;
-    size_t poolCapacity;
+    size_t capacity;
     size_t additionalTasks;
     std::vector<std::thread> threads;
     std::binary_semaphore head, tail;

@@ -3,6 +3,8 @@
 #include <sys/socket.h>
 
 #include <cstdio>
+#include <format>
+#include <iostream>
 #include <vector>
 
 #include "abstract.hpp"
@@ -156,6 +158,9 @@ void Server<Socket>::writeInfo(int fd, std::string_view response) {
     Channel<Socket>& channel = tmp.peerValue();
     if (not channel.trySend(response)) {
         subReactor.refresh(fd);
+    }
+    else {
+        shutdown(fd, SHUT_WR);
     }
 }
 
