@@ -31,6 +31,8 @@ mainReactor响应连接事件，subReactor响应正常的io事件以及断开连
 
 - 特化实现`abstract.hpp`中的接口类
 - 特化`server`类，重载`readInfo`实现业务逻辑
+- 可在`readInfo`处理粘包，接收缓冲区使用`std::queue<std::vector<uint8_t>>`。如果不存在粘包，应当不对缓冲区执行任何操作，下次接收将复用缓冲区；
+如果存在粘包，应当`push`空的`std::vector<uint8_t>`，以供下次接收数据使用；如果处理粘包完毕，应当归还多余内存，如执行`clear`
 
 ## 组件介绍
 ### Epoll
@@ -109,4 +111,4 @@ Linux的epoll存在一些小问题：即使处于EPOLLET触发模式，发送缓
 - `Temp` : `Keeper`的友元类，应当永远是右值属性，离开作用域则析构，析构将调用`takeBack`
 
 ## TODO
-- [] 实现对象池功能，复用`Channel`
+- [ ] 实现对象池功能，复用`Channel`
