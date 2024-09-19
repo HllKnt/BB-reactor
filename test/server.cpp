@@ -56,7 +56,7 @@ public:
     void open(const string& address, uint16_t port) {
         acceptor.open({address, port});
         if (acceptor.handle() < 0) {
-            throw("error ip or port");
+            throw("fatal error");
         }
     }
 
